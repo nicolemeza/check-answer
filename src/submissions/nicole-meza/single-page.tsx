@@ -193,6 +193,12 @@ const assistantScriptedPrompts = [
   'How do I convert an improper fraction to a mixed number?',
 ];
 
+const assistantExamplePrompts = [
+  'What is a mixed number?',
+  'Can you show me a similar fraction example?',
+  'Walk me through converting 30/7 step by step',
+];
+
 const assistantExampleResponse =
   'A mixed number combines a whole number with a proper fraction. For example, 2 3/4 means you have 2 whole units plus 3/4 of another unit. You\'ll often see mixed numbers when a quantity is greater than one but not a whole number.';
 
@@ -200,6 +206,29 @@ const assistantConversionSteps = [
   'To convert an improper fraction to a mixed number first divide the numerator by the denominator.',
   'If there is no remainder, the improper fraction becomes a whole number. If there is a remainder, then a mixed number will result in the following form where the divisor of the mixed number will be the denominator from the original improper fraction.',
 ];
+
+const assistantSimilarExampleResponse =
+  'Try 17/5. Since 5 goes into 17 three times with 2 left over, the mixed number is 3 2/5. For 30/7, 7 goes into 30 four times with 2 left over, so the answer is 4 2/7.';
+
+type AssistantResponseKind = 'mixedNumber' | 'conversionSteps' | 'similarExample';
+
+function getAssistantResponseKind(message: string): AssistantResponseKind {
+  const normalizedMessage = message.toLowerCase();
+
+  if (normalizedMessage.includes('similar') || normalizedMessage.includes('example')) {
+    return 'similarExample';
+  }
+
+  if (
+    normalizedMessage.includes('convert') ||
+    normalizedMessage.includes('step') ||
+    normalizedMessage.includes('30/7')
+  ) {
+    return 'conversionSteps';
+  }
+
+  return 'mixedNumber';
+}
 
 const teacherScriptedQuestion =
   'How do I know if 5/18 is a proper or improper fraction? Is it because the top number is smaller than the bottom number?';
@@ -709,6 +738,9 @@ function StudentAssistantChatbot({ onClose, questionNumber }: StudentAssistantCh
   const [pendingAssistantStep, setPendingAssistantStep] = useState<number | null>(null);
   const [composerValue, setComposerValue] = useState('');
   const [submittedMessages, setSubmittedMessages] = useState<string[]>([]);
+  const [assistantResponseKinds, setAssistantResponseKinds] = useState<AssistantResponseKind[]>(
+    []
+  );
   const nextPromptIndex =
     assistantConversationStep >= 4
       ? assistantScriptedPrompts.length
@@ -747,20 +779,30 @@ function StudentAssistantChatbot({ onClose, questionNumber }: StudentAssistantCh
     return () => window.cancelAnimationFrame(animationFrameId);
   }, [assistantConversationStep, submittedMessages]);
 
-  const handleAssistantMessageSend = (): void => {
-    if (!canSendAssistantMessage) {
+  const handleAssistantMessageSend = (messageOverride?: string): void => {
+    const draftedMessage = messageOverride ?? composerValue.trim();
+
+    if (
+      draftedMessage.length === 0 ||
+      pendingAssistantStep !== null ||
+      nextPromptIndex >= assistantScriptedPrompts.length
+    ) {
       return;
     }
 
     const messageIndex = nextPromptIndex;
-    const nextMessage = assistantScriptedPrompts[messageIndex];
     const nextUserStep = messageIndex === 0 ? 1 : 3;
     const nextAssistantStep = messageIndex === 0 ? 2 : 4;
 
     setSubmittedMessages((currentMessages) => {
       const nextMessages = [...currentMessages];
-      nextMessages[messageIndex] = nextMessage;
+      nextMessages[messageIndex] = draftedMessage;
       return nextMessages;
+    });
+    setAssistantResponseKinds((currentKinds) => {
+      const nextKinds = [...currentKinds];
+      nextKinds[messageIndex] = getAssistantResponseKind(draftedMessage);
+      return nextKinds;
     });
     setAssistantConversationStep(nextUserStep);
     setPendingAssistantStep(nextAssistantStep);
@@ -826,6 +868,22 @@ function StudentAssistantChatbot({ onClose, questionNumber }: StudentAssistantCh
           <AssistantResponseActions actionColor={assistantActionColor} />
         </AssistantMessageGroup>
 
+        {assistantConversationStep === 0 && (
+          <AssistantPromptSuggestions aria-label="Example prompts">
+            {assistantExamplePrompts.map((prompt) => (
+              <AssistantPromptButton
+                key={prompt}
+                disabled={pendingAssistantStep !== null}
+                onClick={() => handleAssistantMessageSend(prompt)}
+                type="button"
+              >
+                <AutoAwesomeIcon color={magma.colors.primary500} size={20} />
+                <AssistantPromptText>{prompt}</AssistantPromptText>
+              </AssistantPromptButton>
+            ))}
+          </AssistantPromptSuggestions>
+        )}
+
         {assistantConversationStep >= 1 && (
           <AssistantUserMessage>
             {submittedMessages[0] ?? assistantScriptedPrompts[0]}
@@ -835,7 +893,9 @@ function StudentAssistantChatbot({ onClose, questionNumber }: StudentAssistantCh
         {assistantConversationStep >= 2 && (
           <>
             <AssistantMessageGroup>
-              <AssistantMessageCopy>{assistantExampleResponse}</AssistantMessageCopy>
+              <AssistantResponseContent
+                responseKind={assistantResponseKinds[0] ?? 'mixedNumber'}
+              />
               <AssistantResponseActions actionColor={assistantActionColor} />
             </AssistantMessageGroup>
           </>
@@ -852,19 +912,9 @@ function StudentAssistantChatbot({ onClose, questionNumber }: StudentAssistantCh
         {assistantConversationStep >= 4 && (
           <>
             <AssistantMessageGroup>
-              <AssistantRichMessageCopy>
-                {assistantConversionSteps.map((paragraph) => (
-                  <p key={paragraph}>{paragraph}</p>
-                ))}
-              </AssistantRichMessageCopy>
-              <AssistantFormulaBlock aria-label="Mixed number form">
-                <AssistantFormulaLabel>whole number</AssistantFormulaLabel>
-                <AssistantFormulaFraction>
-                  <AssistantFormulaLabel>remainder</AssistantFormulaLabel>
-                  <AssistantFormulaLine aria-hidden="true" />
-                  <AssistantFormulaLabel>divisor</AssistantFormulaLabel>
-                </AssistantFormulaFraction>
-              </AssistantFormulaBlock>
+              <AssistantResponseContent
+                responseKind={assistantResponseKinds[1] ?? 'conversionSteps'}
+              />
               <AssistantResponseActions actionColor={assistantActionColor} />
             </AssistantMessageGroup>
           </>
@@ -924,7 +974,7 @@ function StudentAssistantChatbot({ onClose, questionNumber }: StudentAssistantCh
                 size={20}
               />
             }
-            onClick={handleAssistantMessageSend}
+            onClick={() => handleAssistantMessageSend()}
             size={ButtonSize.medium}
             title="Send message"
             variant={ButtonVariant.solid}
@@ -933,6 +983,38 @@ function StudentAssistantChatbot({ onClose, questionNumber }: StudentAssistantCh
       </AssistantComposer>
     </AssistantPanel>
   );
+}
+
+interface AssistantResponseContentProps {
+  responseKind: AssistantResponseKind;
+}
+
+function AssistantResponseContent({ responseKind }: AssistantResponseContentProps) {
+  if (responseKind === 'conversionSteps') {
+    return (
+      <>
+        <AssistantRichMessageCopy>
+          {assistantConversionSteps.map((paragraph) => (
+            <p key={paragraph}>{paragraph}</p>
+          ))}
+        </AssistantRichMessageCopy>
+        <AssistantFormulaBlock aria-label="Mixed number form">
+          <AssistantFormulaLabel>whole number</AssistantFormulaLabel>
+          <AssistantFormulaFraction>
+            <AssistantFormulaLabel>remainder</AssistantFormulaLabel>
+            <AssistantFormulaLine aria-hidden="true" />
+            <AssistantFormulaLabel>divisor</AssistantFormulaLabel>
+          </AssistantFormulaFraction>
+        </AssistantFormulaBlock>
+      </>
+    );
+  }
+
+  if (responseKind === 'similarExample') {
+    return <AssistantMessageCopy>{assistantSimilarExampleResponse}</AssistantMessageCopy>;
+  }
+
+  return <AssistantMessageCopy>{assistantExampleResponse}</AssistantMessageCopy>;
 }
 
 interface AssistantResponseActionsProps {
@@ -2426,6 +2508,55 @@ const AssistantReactions = styled.div`
   display: inline-flex;
   align-items: center;
   gap: ${magma.spaceScale.spacing02};
+`;
+
+const AssistantPromptSuggestions = styled.div`
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: ${magma.spaceScale.spacing03};
+  margin-top: auto;
+`;
+
+const AssistantPromptButton = styled.button`
+  display: inline-flex;
+  max-width: 100%;
+  min-height: ${magma.spaceScale.spacing09};
+  align-items: center;
+  gap: ${magma.spaceScale.spacing03};
+  padding: ${magma.spaceScale.spacing03} ${magma.spaceScale.spacing05};
+  border: 0;
+  border-radius: ${magma.borderRadius};
+  background: transparent;
+  color: ${magma.colors.primary500};
+  cursor: pointer;
+  font-family: ${magma.bodyFont};
+  text-align: left;
+
+  &:hover,
+  &:focus {
+    background: ${magma.colors.primary100};
+  }
+
+  &:focus-visible {
+    outline: 2px solid ${magma.colors.primary500};
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.6;
+  }
+`;
+
+const AssistantPromptText = styled.span`
+  overflow-wrap: anywhere;
+  color: ${magma.colors.primary500};
+  font-size: ${magma.typeScale.size03.fontSize};
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: ${magma.typeScale.size03.lineHeight};
 `;
 
 const AssistantReactionButton = styled(AssistantIconButton)`
