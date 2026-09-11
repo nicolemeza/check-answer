@@ -67,7 +67,6 @@ import {
   ListIcon,
   LogoutIcon,
   MenuBookIcon,
-  MessageIcon,
   MoreHorizIcon,
   PrintIcon,
   ReceiptIcon,
@@ -238,15 +237,11 @@ const teacherScriptedResponse =
 
 const firstQuestionNumber = 1;
 const secondQuestionNumber = 2;
-const thirdQuestionNumber = 3;
-const fourthQuestionNumber = 4;
-const defaultQuestionNumber = fourthQuestionNumber;
-const totalQuestionCount = 4;
+const defaultQuestionNumber = secondQuestionNumber;
+const totalQuestionCount = 2;
 const implementedQuestionNumbers = [
   firstQuestionNumber,
   secondQuestionNumber,
-  thirdQuestionNumber,
-  defaultQuestionNumber,
 ];
 const lrnoPageNumbers = Array.from(
   { length: totalQuestionCount },
@@ -368,13 +363,7 @@ function QuestionPrototype() {
     answerValues.numerator.trim().length > 0 &&
     answerValues.denominator.trim().length > 0;
   const hasAnswerFeedback = activeAnswerFeedback !== 'idle';
-  const isFirstQuestion = activeQuestionNumber === firstQuestionNumber;
-  const isFourthQuestion = activeQuestionNumber === fourthQuestionNumber;
-  const showCheckAnswer = false;
-  const showResourcesPanel =
-    activeQuestionNumber !== secondQuestionNumber && !isFourthQuestion;
-  const showTeacherAction = isFourthQuestion;
-  const hasResourceStudentAssistant = showResourcesPanel && !isFirstQuestion;
+  const showCheckAnswer = true;
   const isIncorrectAnswer = activeAnswerFeedback === 'incorrect';
   const isCorrectAnswer =
     answerValues.whole.trim() === correctAnswerValues.whole &&
@@ -410,18 +399,6 @@ function QuestionPrototype() {
 
   const handleStudentAssistantToggle = (): void => {
     setIsStudentAssistantOpen((currentValue) => !currentValue);
-  };
-
-  const handleResourceStudentAssistantOpen = (): void => {
-    if (!hasResourceStudentAssistant) {
-      return;
-    }
-
-    setIsStudentAssistantOpen(true);
-  };
-
-  const handleTeacherChatOpen = (): void => {
-    setIsTeacherChatOpen(true);
   };
 
   return (
@@ -500,24 +477,6 @@ function QuestionPrototype() {
 
           <QuestionBodyLayout $hasTeacherPanel={isTeacherChatOpen}>
             <Workspace className={hasAnswerFeedback ? 'has-feedback' : undefined}>
-              {showTeacherAction && (
-                <QuestionTopActionRow>
-                  <AskTeacherButton
-                    aria-controls="ask-teacher-chat-panel"
-                    aria-expanded={isTeacherChatOpen}
-                    color={ButtonColor.secondary}
-                    icon={<MessageIcon color={magma.colors.primary500} size={16} />}
-                    iconPosition={ButtonIconPosition.right}
-                    onClick={handleTeacherChatOpen}
-                    size={ButtonSize.small}
-                    textTransform={ButtonTextTransform.uppercase}
-                    variant={ButtonVariant.solid}
-                  >
-                    Ask my teacher
-                  </AskTeacherButton>
-                </QuestionTopActionRow>
-              )}
-
               <QuestionArea>
                 <QuestionPanel>
                   <ProgressHeader>
@@ -604,14 +563,6 @@ function QuestionPrototype() {
                     </AnswerRow>
                   </MathWork>
 
-                  {!hasAnswerFeedback && showResourcesPanel && (
-                    <ResourcesCardPanel
-                      isStudentAssistantOpen={isStudentAssistantOpen}
-                      onStudentAssistantClick={handleResourceStudentAssistantOpen}
-                      showStudentAssistant={!isFirstQuestion}
-                    />
-                  )}
-
                   {showCheckAnswer && (
                     <CheckAnswerRow>
                       <Button
@@ -660,18 +611,6 @@ function QuestionPrototype() {
                   />
                 </QuestionToolbar>
               </QuestionArea>
-
-              {activeAnswerFeedback === 'correct' ? (
-                <CorrectFeedbackCard
-                  questionNumber={activeQuestionNumber}
-                />
-              ) : activeAnswerFeedback === 'incorrect' ? (
-                <IncorrectFeedbackCard
-                  questionNumber={activeQuestionNumber}
-                />
-              ) : (
-                null
-              )}
 
               <LrnoPagination currentQuestionNumber={activeQuestionNumber} />
             </Workspace>
@@ -1506,7 +1445,7 @@ interface ResourcesCardPanelProps {
   showStudentAssistant?: boolean;
 }
 
-function ResourcesCardPanel({
+function _ResourcesCardPanel({
   isStudentAssistantOpen = false,
   onStudentAssistantClick,
   showStudentAssistant = true,
@@ -1558,7 +1497,7 @@ interface QuestionFeedbackCardProps {
   showResourceActions?: boolean;
 }
 
-function IncorrectFeedbackCard({
+function _IncorrectFeedbackCard({
   questionNumber,
   showResourceActions = true,
 }: QuestionFeedbackCardProps) {
@@ -1666,7 +1605,7 @@ function IncorrectFeedbackCard({
   );
 }
 
-function CorrectFeedbackCard({
+function _CorrectFeedbackCard({
   questionNumber,
   showResourceActions = true,
 }: QuestionFeedbackCardProps) {
@@ -3319,7 +3258,7 @@ const Workspace = styled.section`
   }
 `;
 
-const QuestionTopActionRow = styled.div`
+const _QuestionTopActionRow = styled.div`
   display: flex;
   width: 100%;
   align-items: center;
@@ -3328,7 +3267,7 @@ const QuestionTopActionRow = styled.div`
   padding: 0 ${magma.spaceScale.spacing05};
 `;
 
-const AskTeacherButton = styled(IconButton)`
+const _AskTeacherButton = styled(IconButton)`
   && {
     min-height: calc(${magma.spaceScale.spacing07} - ${magma.spaceScale.spacing01});
     padding: ${magma.spaceScale.spacing02} ${magma.spaceScale.spacing03};
@@ -3667,7 +3606,7 @@ const AnswerStatusIcon = styled.span`
   position: absolute;
   top: 0;
   bottom: 0;
-  right: ${magma.spaceScale.spacing03};
+  right: calc(${magma.spaceScale.spacing03} + ${magma.spaceScale.spacing02});
   display: inline-flex;
   width: ${magma.spaceScale.spacing05};
   align-items: center;
