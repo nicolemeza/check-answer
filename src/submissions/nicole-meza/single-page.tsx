@@ -37,7 +37,6 @@ import {
 } from 'react-magma-dom';
 import {
   AccountCircleIcon,
-  AccessTimeIcon,
   AddIcon,
   ArrowBackIcon,
   ArrowForwardIcon,
@@ -295,20 +294,17 @@ const initialAnswerValues = {
   denominator: '',
 };
 
+const overviewAttemptLimit = 1;
 const overviewStats = [
   { label: 'Due date (EST)', value: '11/26/2026 @ 11:59 PM', Icon: CalendarTodayIcon },
-  { label: 'Time limit', value: '1 hour', Icon: AccessTimeIcon },
   { label: 'Final score (Best)', value: '--', Icon: StarIcon },
-  { label: 'Attempts', value: '4', Icon: ChecklistIcon },
+  { label: 'Attempts', value: String(overviewAttemptLimit), Icon: ChecklistIcon },
   { label: 'Points Possible', value: '10', Icon: AddIcon },
   { label: 'Grading policy', value: 'Counts toward grade', Icon: CheckCircleIcon },
 ];
 
 const overviewAttemptRows = [
   { attempt: '1', hasStartAction: true },
-  { attempt: '2', hasStartAction: false },
-  { attempt: '3', hasStartAction: false },
-  { attempt: '4', hasStartAction: false },
 ];
 
 type AnswerField = keyof typeof initialAnswerValues;
@@ -1557,7 +1553,7 @@ function ActivityOverviewPage() {
                   <TableHead>
                     <TableRow>
                       <OverviewHeaderCell scope={TableHeaderCellScope.col}>
-                        Attempt (of 4)
+                        Attempt (of {overviewAttemptLimit})
                       </OverviewHeaderCell>
                       <OverviewHeaderCell scope={TableHeaderCellScope.col}>
                         Submitted on
