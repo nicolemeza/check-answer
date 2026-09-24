@@ -4075,7 +4075,7 @@ const AttemptsTableHeading = styled(Paragraph)`
   margin: 0;
   padding: ${magma.spaceScale.spacing03} ${magma.spaceScale.spacing04};
   background: ${magma.colors.neutral200};
-  border-bottom: 1px solid ${magma.colors.border};
+  border-bottom: 0;
 
   && {
     color: ${magma.colors.neutral500};
