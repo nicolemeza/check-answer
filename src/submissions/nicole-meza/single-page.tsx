@@ -57,6 +57,7 @@ import {
   ContentCopyIcon,
   DoubleArrowIcon,
   ExpandMoreIcon,
+  ExpandLessIcon,
   FlagIcon,
   FormatSizeIcon,
   FunctionsIcon,
@@ -237,11 +238,13 @@ const teacherScriptedResponse =
 
 const firstQuestionNumber = 1;
 const secondQuestionNumber = 2;
+const thirdQuestionNumber = 3;
 const defaultQuestionNumber = secondQuestionNumber;
-const totalQuestionCount = 2;
+const totalQuestionCount = 3;
 const implementedQuestionNumbers = [
   firstQuestionNumber,
   secondQuestionNumber,
+  thirdQuestionNumber,
 ];
 const lrnoPageNumbers = Array.from(
   { length: totalQuestionCount },
@@ -292,12 +295,6 @@ const initialAnswerValues = {
   denominator: '',
 };
 
-const correctAnswerValues = {
-  whole: '4',
-  numerator: '2',
-  denominator: '7',
-};
-
 const overviewStats = [
   { label: 'Due date (EST)', value: '11/26/2026 @ 11:59 PM', Icon: CalendarTodayIcon },
   { label: 'Time limit', value: '1 hour', Icon: AccessTimeIcon },
@@ -318,7 +315,29 @@ type AnswerField = keyof typeof initialAnswerValues;
 type AnswerValues = typeof initialAnswerValues;
 type AnswerValuesByQuestion = Partial<Record<number, AnswerValues>>;
 type AnswerFeedback = 'idle' | 'incorrect' | 'correct';
-type AnswerFeedbackByQuestion = Partial<Record<number, AnswerFeedback>>;
+type AnswerFeedbackByField = Record<AnswerField, AnswerFeedback>;
+type AnswerFeedbackByQuestion = Partial<Record<number, AnswerFeedbackByField>>;
+type AttemptState = 'correct' | 'incorrect' | 'unattempted';
+type GradedAttemptState = Exclude<AttemptState, 'unattempted'>;
+type AttemptsByField = Record<AnswerField, GradedAttemptState[]>;
+type TouchedFields = Record<AnswerField, boolean>;
+
+const maximumAttempts = 5;
+const initialAnswerFeedback: AnswerFeedbackByField = {
+  whole: 'idle',
+  numerator: 'idle',
+  denominator: 'idle',
+};
+const attemptsTableFields: Array<{
+  answerField: AnswerField;
+  correctAnswer: string;
+  field: string;
+  possiblePoints: number;
+}> = [
+  { field: 'Field 1', answerField: 'whole', correctAnswer: '4', possiblePoints: 0.33 },
+  { field: 'Field 2', answerField: 'numerator', correctAnswer: '2', possiblePoints: 0.33 },
+  { field: 'Field 3', answerField: 'denominator', correctAnswer: '7', possiblePoints: 0.34 },
+];
 
 export default function SinglePage() {
   if (isMasterItPage()) {
@@ -352,30 +371,89 @@ function QuestionPrototype() {
     });
   const [answerFeedbackByQuestion, setAnswerFeedbackByQuestion] =
     useState<AnswerFeedbackByQuestion>({
-      [defaultQuestionNumber]: 'idle',
+      [defaultQuestionNumber]: initialAnswerFeedback,
     });
   const [isStudentAssistantOpen, setIsStudentAssistantOpen] = useState(false);
   const [isTeacherChatOpen, setIsTeacherChatOpen] = useState(false);
+  const [isAttemptsExpanded, setIsAttemptsExpanded] = useState(false);
+  const [attemptsByField, setAttemptsByField] = useState<AttemptsByField>({
+    whole: [],
+    numerator: [],
+    denominator: [],
+  });
+  const [touchedFields, setTouchedFields] = useState<TouchedFields>({
+    whole: false,
+    numerator: false,
+    denominator: false,
+  });
+  const [singleFieldAnswer, setSingleFieldAnswer] = useState('');
+  const [isSingleFieldTouched, setIsSingleFieldTouched] = useState(false);
+  const [singleFieldAttempts, setSingleFieldAttempts] = useState<GradedAttemptState[]>([]);
   const answerValues = answerValuesByQuestion[activeQuestionNumber] ?? initialAnswerValues;
-  const activeAnswerFeedback = answerFeedbackByQuestion[activeQuestionNumber] ?? 'idle';
+  const activeAnswerFeedback =
+    answerFeedbackByQuestion[activeQuestionNumber] ?? initialAnswerFeedback;
+  const displayedAnswerFeedback = activeQuestionNumber === thirdQuestionNumber
+    ? attemptsTableFields.reduce<AnswerFeedbackByField>(
+        (feedbackByField, { answerField }) => ({
+          ...feedbackByField,
+          [answerField]: touchedFields[answerField]
+            ? 'idle'
+            : attemptsByField[answerField][attemptsByField[answerField].length - 1] ?? 'idle',
+        }),
+        initialAnswerFeedback,
+      )
+    : activeAnswerFeedback;
   const isCheckAnswerActive =
     answerValues.whole.trim().length > 0 &&
     answerValues.numerator.trim().length > 0 &&
     answerValues.denominator.trim().length > 0;
-  const hasAnswerFeedback = activeAnswerFeedback !== 'idle';
-  const showCheckAnswer = true;
-  const isIncorrectAnswer = activeAnswerFeedback === 'incorrect';
-  const isCorrectAnswer =
-    answerValues.whole.trim() === correctAnswerValues.whole &&
-    answerValues.numerator.trim() === correctAnswerValues.numerator &&
-    answerValues.denominator.trim() === correctAnswerValues.denominator;
-
+  const hasAnswerFeedback = Object.values(activeAnswerFeedback).some(
+    (feedback) => feedback !== 'idle',
+  );
+  const earnedScore = attemptsTableFields.reduce(
+    (score, { answerField, possiblePoints }) =>
+      score + (
+        attemptsByField[answerField][attemptsByField[answerField].length - 1] === 'correct'
+          ? possiblePoints
+          : 0
+      ),
+    0,
+  );
+  const formattedEarnedScore = Number.isInteger(earnedScore)
+    ? earnedScore.toFixed(0)
+    : earnedScore.toFixed(2);
+  const hasGradeableField = attemptsTableFields.some(
+    ({ answerField }) =>
+      touchedFields[answerField] && attemptsByField[answerField].length < maximumAttempts,
+  );
+  const singleFieldDisplayedAttempts: AttemptState[] = [
+    ...singleFieldAttempts,
+    ...Array.from(
+      { length: maximumAttempts - singleFieldAttempts.length },
+      () => 'unattempted' as const,
+    ),
+  ];
+  const isSingleFieldLatestAttemptCorrect =
+    singleFieldAttempts[singleFieldAttempts.length - 1] === 'correct';
+  const singleFieldFeedback: AnswerFeedback = isSingleFieldTouched
+    ? 'idle'
+    : singleFieldAttempts[singleFieldAttempts.length - 1] ?? 'idle';
   const handleAnswerChange =
     (field: AnswerField) =>
     (event: ChangeEvent<HTMLInputElement>): void => {
+      if (activeQuestionNumber === thirdQuestionNumber) {
+        setTouchedFields((currentTouchedFields) => ({
+          ...currentTouchedFields,
+          [field]: true,
+        }));
+      }
+
       setAnswerFeedbackByQuestion((currentFeedbackByQuestion) => ({
         ...currentFeedbackByQuestion,
-        [activeQuestionNumber]: 'idle',
+        [activeQuestionNumber]: {
+          ...(currentFeedbackByQuestion[activeQuestionNumber] ?? initialAnswerFeedback),
+          [field]: 'idle',
+        },
       }));
       setAnswerValuesByQuestion((currentValuesByQuestion) => ({
         ...currentValuesByQuestion,
@@ -393,8 +471,72 @@ function QuestionPrototype() {
 
     setAnswerFeedbackByQuestion((currentFeedbackByQuestion) => ({
       ...currentFeedbackByQuestion,
-      [activeQuestionNumber]: isCorrectAnswer ? 'correct' : 'incorrect',
+      [activeQuestionNumber]: attemptsTableFields.reduce<AnswerFeedbackByField>(
+        (feedbackByField, { answerField, correctAnswer }) => ({
+          ...feedbackByField,
+          [answerField]: answerValues[answerField].trim() === correctAnswer
+            ? 'correct'
+            : 'incorrect',
+        }),
+        initialAnswerFeedback,
+      ),
     }));
+  };
+
+  const handleGradeQuestion = (): void => {
+    if (!hasGradeableField) {
+      return;
+    }
+
+    setAttemptsByField((currentAttempts) =>
+      attemptsTableFields.reduce<AttemptsByField>(
+        (nextAttempts, { answerField, correctAnswer }) => {
+          if (!touchedFields[answerField] || currentAttempts[answerField].length >= maximumAttempts) {
+            return nextAttempts;
+          }
+
+          return {
+            ...nextAttempts,
+            [answerField]: [
+              ...currentAttempts[answerField],
+              answerValues[answerField].trim() === correctAnswer ? 'correct' : 'incorrect',
+            ],
+          };
+        },
+        currentAttempts,
+      ),
+    );
+    setTouchedFields((currentTouchedFields) =>
+      attemptsTableFields.reduce<TouchedFields>(
+        (nextTouchedFields, { answerField }) => ({
+          ...nextTouchedFields,
+          [answerField]: attemptsByField[answerField].length >= maximumAttempts
+            ? currentTouchedFields[answerField]
+            : false,
+        }),
+        currentTouchedFields,
+      ),
+    );
+  };
+
+  const handleSingleFieldAnswerChange = (event: ChangeEvent<HTMLInputElement>): void => {
+    setSingleFieldAnswer(event.target.value);
+    setIsSingleFieldTouched(true);
+  };
+
+  const handleSingleFieldGrade = (): void => {
+    if (!isSingleFieldTouched || singleFieldAttempts.length >= maximumAttempts) {
+      return;
+    }
+    const normalizedAnswer = singleFieldAnswer.trim();
+
+    setSingleFieldAttempts((attempts) => [
+      ...attempts,
+      normalizedAnswer === '0.5' || normalizedAnswer === '.5' || normalizedAnswer === '1/2'
+        ? 'correct'
+        : 'incorrect',
+    ]);
+    setIsSingleFieldTouched(false);
   };
 
   const handleStudentAssistantToggle = (): void => {
@@ -495,75 +637,102 @@ function QuestionPrototype() {
                     percentage={getQuestionProgressPercentage(activeQuestionNumber)}
                   />
 
-                  <QuestionText noMargins>
-                    Convert the improper fraction to a whole or mixed number. (Enter your answer as a
-                    simplified mixed number.)
-                  </QuestionText>
+                  {activeQuestionNumber === secondQuestionNumber ? (
+                    <SingleFieldQuestion>
+                      <QuestionText noMargins>
+                        At a butcher store, 5{' '}
+                        <InlineFraction aria-label="one half">
+                          <span>1</span>
+                          <InlineFractionLine aria-hidden="true" />
+                          <span>2</span>
+                        </InlineFraction>{' '}
+                        pounds of hamburger meat are to be divided into 11 equal packages. How many
+                        pounds of meat will each package contain?
+                    </QuestionText>
+                    <SingleAnswerRow>
+                      <AnswerInputControl $feedbackState={singleFieldFeedback}>
+                        <Input
+                          aria-invalid={singleFieldFeedback === 'incorrect'}
+                          inputSize={InputSize.medium}
+                          isLabelVisuallyHidden
+                          labelText="Pounds per package"
+                          onChange={handleSingleFieldAnswerChange}
+                          value={singleFieldAnswer}
+                          width={answerInputWidth}
+                        />
+                        <AnswerFeedbackIcon feedbackState={singleFieldFeedback} />
+                      </AnswerInputControl>
+                        <span>lb</span>
+                      </SingleAnswerRow>
+                    </SingleFieldQuestion>
+                  ) : (
+                    <>
+                      <QuestionText noMargins>
+                        Convert the improper fraction to a whole or mixed number. (Enter your answer as a
+                        simplified mixed number.)
+                      </QuestionText>
 
-                  <MathWork aria-label="Convert thirty sevenths into a mixed number">
-                    <ProblemFraction>
-                      <Fraction>
-                        <span>30</span>
-                        <FractionLine aria-hidden="true" />
-                        <span>7</span>
-                      </Fraction>
-                    </ProblemFraction>
+                      <MathWork aria-label="Convert thirty sevenths into a mixed number">
+                        <ProblemFraction>
+                          <Fraction>
+                            <span>30</span>
+                            <FractionLine aria-hidden="true" />
+                            <span>7</span>
+                          </Fraction>
+                        </ProblemFraction>
 
-                    <AnswerRow>
-                      <AnswerInput>
-                        <AnswerInputControl $feedbackState={activeAnswerFeedback}>
-                          <Input
-                            aria-invalid={isIncorrectAnswer}
-                            inputSize={InputSize.medium}
-                            isLabelVisuallyHidden
-                            labelText="Whole number"
-                            onChange={handleAnswerChange('whole')}
-                            value={answerValues.whole}
-                            width={answerInputWidth}
-                          />
-                          <AnswerFeedbackIcon feedbackState={activeAnswerFeedback} />
-                        </AnswerInputControl>
-                      </AnswerInput>
-                      <Fraction>
-                        <AnswerInput
-                          $hasBottomPadding
-                          $isStacked
-                        >
-                          <AnswerInputControl $feedbackState={activeAnswerFeedback}>
-                            <Input
-                              aria-invalid={isIncorrectAnswer}
-                              inputSize={InputSize.medium}
-                              isLabelVisuallyHidden
-                              labelText="Numerator"
-                              onChange={handleAnswerChange('numerator')}
-                              value={answerValues.numerator}
-                              width={answerInputWidth}
-                            />
-                            <AnswerFeedbackIcon feedbackState={activeAnswerFeedback} />
-                          </AnswerInputControl>
-                        </AnswerInput>
-                        <AnswerFractionLine aria-hidden="true" />
-                        <AnswerInput
-                          $isStacked
-                        >
-                          <AnswerInputControl $feedbackState={activeAnswerFeedback}>
-                            <Input
-                              aria-invalid={isIncorrectAnswer}
-                              inputSize={InputSize.medium}
-                              isLabelVisuallyHidden
-                              labelText="Denominator"
-                              onChange={handleAnswerChange('denominator')}
-                              value={answerValues.denominator}
-                              width={answerInputWidth}
-                            />
-                            <AnswerFeedbackIcon feedbackState={activeAnswerFeedback} />
-                          </AnswerInputControl>
-                        </AnswerInput>
-                      </Fraction>
-                    </AnswerRow>
-                  </MathWork>
+                        <AnswerRow>
+                          <AnswerInput>
+                            <AnswerInputControl $feedbackState={displayedAnswerFeedback.whole}>
+                              <Input
+                                aria-invalid={displayedAnswerFeedback.whole === 'incorrect'}
+                                inputSize={InputSize.medium}
+                                isLabelVisuallyHidden
+                                labelText="Whole number"
+                                onChange={handleAnswerChange('whole')}
+                                value={answerValues.whole}
+                                width={answerInputWidth}
+                              />
+                              <AnswerFeedbackIcon feedbackState={displayedAnswerFeedback.whole} />
+                            </AnswerInputControl>
+                          </AnswerInput>
+                          <Fraction>
+                            <AnswerInput $hasBottomPadding $isStacked>
+                              <AnswerInputControl $feedbackState={displayedAnswerFeedback.numerator}>
+                                <Input
+                                  aria-invalid={displayedAnswerFeedback.numerator === 'incorrect'}
+                                  inputSize={InputSize.medium}
+                                  isLabelVisuallyHidden
+                                  labelText="Numerator"
+                                  onChange={handleAnswerChange('numerator')}
+                                  value={answerValues.numerator}
+                                  width={answerInputWidth}
+                                />
+                                <AnswerFeedbackIcon feedbackState={displayedAnswerFeedback.numerator} />
+                              </AnswerInputControl>
+                            </AnswerInput>
+                            <AnswerFractionLine aria-hidden="true" />
+                            <AnswerInput $isStacked>
+                              <AnswerInputControl $feedbackState={displayedAnswerFeedback.denominator}>
+                                <Input
+                                  aria-invalid={displayedAnswerFeedback.denominator === 'incorrect'}
+                                  inputSize={InputSize.medium}
+                                  isLabelVisuallyHidden
+                                  labelText="Denominator"
+                                  onChange={handleAnswerChange('denominator')}
+                                  value={answerValues.denominator}
+                                  width={answerInputWidth}
+                                />
+                                <AnswerFeedbackIcon feedbackState={displayedAnswerFeedback.denominator} />
+                              </AnswerInputControl>
+                            </AnswerInput>
+                          </Fraction>
+                        </AnswerRow>
+                      </MathWork>
+                    </>
+                  )}
 
-                  {showCheckAnswer && (
+                  {activeQuestionNumber === firstQuestionNumber ? (
                     <CheckAnswerRow>
                       <Button
                         color={ButtonColor.subtle}
@@ -576,6 +745,128 @@ function QuestionPrototype() {
                         Check answer
                       </Button>
                     </CheckAnswerRow>
+                  ) : activeQuestionNumber === secondQuestionNumber ? (
+                    <AttemptsArea>
+                      <Button
+                        color={ButtonColor.secondary}
+                        disabled={!isSingleFieldTouched || singleFieldAttempts.length >= maximumAttempts}
+                        onClick={handleSingleFieldGrade}
+                        size={ButtonSize.medium}
+                        textTransform={ButtonTextTransform.uppercase}
+                      >
+                        Grade question
+                      </Button>
+                      <SingleAttemptsSection aria-labelledby="single-attempts-heading">
+                        <SingleAttemptsTitleGroup>
+                          <Heading
+                            id="single-attempts-heading"
+                            level={3}
+                            visualStyle={TypographyVisualStyle.heading2XSmall}
+                          >
+                            Attempts
+                          </Heading>
+                          <AttemptsPolicy>
+                            Your grade is based on your <BestAttempt>best attempt</BestAttempt>.
+                          </AttemptsPolicy>
+                        </SingleAttemptsTitleGroup>
+                        <AttemptIndicators
+                          aria-label={`${singleFieldAttempts.length} of ${maximumAttempts} attempts`}
+                        >
+                          {singleFieldDisplayedAttempts.map((attempt, index) => (
+                            <AttemptIndicator key={index} $state={attempt} />
+                          ))}
+                        </AttemptIndicators>
+                        <EarnedScore>
+                          <EarnedScoreLabel>Earned Score:</EarnedScoreLabel>{' '}
+                          <EarnedScoreValue>
+                            {isSingleFieldLatestAttemptCorrect ? '1' : '0'} / 1 pt
+                          </EarnedScoreValue>
+                        </EarnedScore>
+                      </SingleAttemptsSection>
+                    </AttemptsArea>
+                  ) : (
+                    <AttemptsArea>
+                      <Button
+                        color={ButtonColor.secondary}
+                        disabled={!hasGradeableField}
+                        onClick={handleGradeQuestion}
+                        size={ButtonSize.medium}
+                        textTransform={ButtonTextTransform.uppercase}
+                      >
+                        Grade question
+                      </Button>
+                      <AttemptsSection aria-labelledby="attempts-heading">
+                      <AttemptsHeader>
+                        <AttemptsTitleGroup>
+                          <Heading
+                            id="attempts-heading"
+                            level={3}
+                            visualStyle={TypographyVisualStyle.heading2XSmall}
+                          >
+                            Attempts
+                          </Heading>
+                          <AttemptsPolicy>
+                            Your grade is based on your <BestAttempt>best attempt</BestAttempt>.
+                          </AttemptsPolicy>
+                        </AttemptsTitleGroup>
+                        <AttemptsHeaderActions>
+                          <EarnedScore>
+                            <EarnedScoreLabel>Earned Score:</EarnedScoreLabel>{' '}
+                            <EarnedScoreValue>{formattedEarnedScore} / 1 pt</EarnedScoreValue>
+                          </EarnedScore>
+                          <IconButton
+                            aria-controls="attempts-table"
+                            aria-expanded={isAttemptsExpanded}
+                            aria-label={isAttemptsExpanded ? 'Collapse attempts' : 'Expand attempts'}
+                            color={ButtonColor.subtle}
+                            icon={isAttemptsExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                            onClick={() => setIsAttemptsExpanded((isExpanded) => !isExpanded)}
+                            size={ButtonSize.medium}
+                            variant={ButtonVariant.link}
+                          />
+                        </AttemptsHeaderActions>
+                      </AttemptsHeader>
+                      {isAttemptsExpanded && <AttemptsTable id="attempts-table" role="table" aria-label="Attempts summary">
+                        <AttemptsTableHeader role="row">
+                          <AttemptsTableHeading role="columnheader">Field</AttemptsTableHeading>
+                          <AttemptsTableHeading role="columnheader">Score per attempt</AttemptsTableHeading>
+                          <AttemptsTableHeading role="columnheader">Attempts used</AttemptsTableHeading>
+                          <AttemptsTableHeading role="columnheader">Points</AttemptsTableHeading>
+                        </AttemptsTableHeader>
+                        {attemptsTableFields.map(({ answerField, field, possiblePoints }) => {
+                          const attempts = attemptsByField[answerField];
+                          const displayedAttempts: AttemptState[] = [
+                            ...attempts,
+                            ...Array.from(
+                              { length: maximumAttempts - attempts.length },
+                              () => 'unattempted' as const,
+                            ),
+                          ];
+                          const status = `${attempts.length} of ${maximumAttempts}`;
+                          const earnedPoints = attempts[attempts.length - 1] === 'correct'
+                            ? possiblePoints.toFixed(2)
+                            : '0';
+
+                          return (
+                            <AttemptsTableRow key={field} role="row">
+                              <AttemptLabel role="cell">{field}</AttemptLabel>
+                              <AttemptIndicators role="cell" aria-label={`${status} attempts`}>
+                                {displayedAttempts.map((attempt, index) => (
+                                  <AttemptIndicator key={index} $state={attempt} />
+                                ))}
+                              </AttemptIndicators>
+                              <AttemptStatus role="cell">
+                                <AttemptTag $filled={attempts.length === maximumAttempts}>{status}</AttemptTag>
+                              </AttemptStatus>
+                              <AttemptPoints role="cell">
+                                {earnedPoints} / {possiblePoints.toFixed(2)}
+                              </AttemptPoints>
+                            </AttemptsTableRow>
+                          );
+                        })}
+                      </AttemptsTable>}
+                      </AttemptsSection>
+                    </AttemptsArea>
                   )}
                 </QuestionPanel>
 
@@ -2041,7 +2332,7 @@ const ReaderFrame = styled.main`
   min-height: 100vh;
   grid-template-columns: ${readerNavigationWidth} minmax(0, 1fr) ${readerToolRailWidth};
   overflow: hidden;
-  background: ${magma.colors.neutral100};
+  background: ${magma.colors.neutral200};
   color: ${magma.colors.neutral700};
   font-family: ${magma.bodyFont};
 
@@ -2092,7 +2383,8 @@ const ReaderHeader = styled.header`
   min-height: 43px;
   align-items: center;
   justify-content: space-between;
-  gap: ${magma.spaceScale.spacing04};
+  row-gap: ${magma.spaceScale.spacing06};
+  column-gap: ${magma.spaceScale.spacing04};
   padding: 0 ${magma.spaceScale.spacing03};
   border-bottom: 1px solid ${magma.colors.border};
   background: ${magma.colors.neutral100};
@@ -2408,7 +2700,7 @@ const AssistantMessages = styled.div`
   flex-direction: column;
   gap: ${magma.spaceScale.spacing05};
   overflow-y: auto;
-  padding: ${magma.spaceScale.spacing05};
+  padding: ${magma.spaceScale.spacing06};
 `;
 
 const AssistantMessageGroup = styled.div`
@@ -2651,7 +2943,7 @@ const TeacherPanelHeader = styled.div`
   align-items: flex-start;
   justify-content: space-between;
   gap: ${magma.spaceScale.spacing05};
-  padding: ${magma.spaceScale.spacing05};
+  padding: ${magma.spaceScale.spacing06};
   border-bottom: 1px solid ${magma.colors.neutral300};
   background: ${magma.colors.neutral100};
 `;
@@ -3242,6 +3534,8 @@ const QuestionBodyLayout = styled.div<QuestionBodyLayoutProps>`
 
 const Workspace = styled.section`
   display: flex;
+  width: calc(100% - ${magma.spaceScale.spacing11});
+  box-sizing: border-box;
   flex-direction: column;
   gap: ${magma.spaceScale.spacing05};
   max-width: ${magma.breakpoints.large}px;
@@ -3253,6 +3547,7 @@ const Workspace = styled.section`
   }
 
   @media (max-width: ${magma.breakpoints.large}px) {
+    width: 100%;
     max-width: none;
     padding: ${magma.spaceScale.spacing04};
   }
@@ -3488,11 +3783,49 @@ const QuestionText = styled(Paragraph)`
   line-height: 30px;
 `;
 
+const SingleFieldQuestion = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: ${magma.spaceScale.spacing06};
+`;
+
+const InlineFraction = styled.span`
+  display: inline-flex;
+  min-width: ${magma.spaceScale.spacing05};
+  flex-direction: column;
+  align-items: center;
+  color: ${magma.colors.neutral700};
+  font-size: ${magma.typeScale.size02.fontSize};
+  line-height: ${magma.typeScale.size02.lineHeight};
+  vertical-align: middle;
+`;
+
+const InlineFractionLine = styled.span`
+  display: block;
+  width: 100%;
+  height: 1px;
+  background: ${magma.colors.neutral700};
+`;
+
+const SingleAnswerRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: ${magma.spaceScale.spacing06};
+  margin-left: ${magma.spaceScale.spacing08};
+  color: ${magma.colors.neutral700};
+  font-size: ${magma.typeScale.size03.fontSize};
+
+  @media (max-width: ${magma.breakpoints.small}px) {
+    margin-left: 0;
+  }
+`;
+
 const MathWork = styled.div`
   display: grid;
   width: min(100%, 260px);
   grid-template-columns: 80px 120px;
-  row-gap: ${magma.spaceScale.spacing06};
+  row-gap: ${magma.spaceScale.spacing04};
   align-items: center;
   margin-top: ${magma.spaceScale.spacing04};
   margin-left: ${magma.spaceScale.spacing08};
@@ -3591,8 +3924,7 @@ const AnswerInputControl = styled.div<AnswerInputControlProps>`
     padding-left: ${magma.spaceScale.spacing03};
     border-color: ${({ $feedbackState }) => getAnswerFeedbackColor($feedbackState)};
     box-shadow: none;
-    text-align: ${({ $feedbackState }) =>
-      $feedbackState !== 'idle' ? 'left' : 'center'};
+    text-align: left;
   }
 
   && input:focus {
@@ -3621,8 +3953,224 @@ const AnswerStatusIcon = styled.span`
 
 const CheckAnswerRow = styled.div`
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
   padding-top: ${magma.spaceScale.spacing02};
+`;
+
+const AttemptsArea = styled.div`
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: ${magma.spaceScale.spacing04};
+  margin-top: ${magma.spaceScale.spacing04};
+`;
+
+const AttemptsSection = styled.section`
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  row-gap: ${magma.spaceScale.spacing06};
+  column-gap: ${magma.spaceScale.spacing04};
+  padding: ${magma.spaceScale.spacing06};
+  border: 1px solid ${magma.colors.border};
+  border-radius: ${magma.spaceScale.spacing04};
+  background: ${magma.colors.neutral100};
+`;
+
+const AttemptsHeader = styled.div`
+  display: flex;
+  height: fit-content;
+  align-items: center;
+  justify-content: space-between;
+  gap: ${magma.spaceScale.spacing04};
+
+  && h3 {
+    margin: 0;
+    font-size: ${magma.typeScale.size03.fontSize};
+    line-height: ${magma.typeScale.size03.lineHeight};
+    text-transform: none;
+    font-weight: 600;
+  }
+`;
+
+const AttemptsTitleGroup = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  row-gap: 0;
+  column-gap: 0;
+`;
+
+const SingleAttemptsTitleGroup = styled(AttemptsTitleGroup)`
+  min-width: 0;
+  flex: 1;
+`;
+
+const SingleAttemptsSection = styled(AttemptsSection)`
+  flex-direction: row;
+  align-items: center;
+  gap: ${magma.spaceScale.spacing04};
+
+  && h3 {
+    margin: 0;
+    font-size: ${magma.typeScale.size03.fontSize};
+    line-height: ${magma.typeScale.size03.lineHeight};
+    text-transform: none;
+    font-weight: 600;
+  }
+
+  @media (max-width: ${magma.breakpoints.small}px) {
+    flex-wrap: wrap;
+  }
+`;
+
+const AttemptsHeaderActions = styled.div`
+  display: inline-flex;
+  align-items: center;
+  row-gap: ${magma.spaceScale.spacing04};
+  column-gap: ${magma.spaceScale.spacing04};
+`;
+
+const AttemptsPolicy = styled(Paragraph)`
+  margin: 0;
+  && {
+    color: ${magma.colors.neutral500};
+    font-size: ${magma.typeScale.size01.fontSize};
+  }
+`;
+
+const BestAttempt = styled.span`
+  font-weight: 600;
+`;
+
+const EarnedScore = styled(Paragraph)`
+  margin: 0;
+  color: ${magma.colors.neutral700};
+  && {
+    font-size: ${magma.typeScale.size02.fontSize};
+  }
+  font-weight: 500;
+  white-space: nowrap;
+`;
+
+const EarnedScoreLabel = styled.span`
+  font-weight: 500;
+`;
+
+const EarnedScoreValue = styled.span`
+  font-weight: 700;
+`;
+
+const AttemptsTable = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1.5fr 1.25fr 0.75fr;
+  grid-template-rows: auto repeat(3, 56px);
+  overflow: hidden;
+  border: 1px solid ${magma.colors.border};
+  border-radius: ${magma.spaceScale.spacing03};
+`;
+
+const AttemptsTableHeader = styled.div`
+  display: contents;
+`;
+
+const AttemptsTableHeading = styled(Paragraph)`
+  margin: 0;
+  padding: ${magma.spaceScale.spacing03} ${magma.spaceScale.spacing04};
+  background: ${magma.colors.neutral200};
+  border-bottom: 1px solid ${magma.colors.border};
+
+  && {
+    color: ${magma.colors.neutral500};
+    font-size: ${magma.typeScale.size01.fontSize};
+    font-weight: 600;
+  }
+
+  &&:last-child {
+    text-align: right;
+  }
+`;
+
+const AttemptsTableRow = styled.div`
+  display: contents;
+
+  > * {
+    display: flex;
+    align-items: center;
+    height: 100%;
+    min-height: 0;
+    box-sizing: border-box;
+    padding: ${magma.spaceScale.spacing04};
+    border-top: 1px solid ${magma.colors.border};
+  }
+`;
+
+const AttemptIndicators = styled.div`
+  display: flex !important;
+  gap: ${magma.spaceScale.spacing02};
+  flex-wrap: wrap;
+`;
+
+interface AttemptIndicatorProps {
+  $state: AttemptState;
+}
+
+const AttemptIndicator = styled.span<AttemptIndicatorProps>`
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  background: ${({ $state }) => ({
+    correct: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M11.998 2.28503C17.518 2.28503 21.998 6.76503 21.998 12.285C21.9979 17.8049 17.5179 22.285 11.998 22.285C6.47817 22.285 1.99824 17.8049 1.99805 12.285C1.99805 6.76503 6.47805 2.28503 11.998 2.28503ZM18.2881 7.57507C17.8981 7.18507 17.2679 7.18507 16.8779 7.57507L9.99805 14.455L7.1084 11.5751C6.7184 11.1851 6.08824 11.1851 5.69824 11.5751C5.30838 11.965 5.30839 12.5943 5.69824 12.9843L9.28809 16.5751C9.67807 16.9648 10.3183 16.9649 10.6982 16.5751L18.2881 8.98425C18.6778 8.59431 18.6778 7.96501 18.2881 7.57507Z' fill='%23178037'/%3E%3C/svg%3E")`,
+    incorrect: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M11.998 2.28503C17.528 2.28503 21.998 6.75503 21.998 12.285C21.9979 17.8149 17.5279 22.285 11.998 22.285C6.46817 22.285 1.99824 17.8149 1.99805 12.285C1.99805 6.75503 6.46805 2.28503 11.998 2.28503ZM16.2979 7.98425C15.9078 7.59457 15.2776 7.59439 14.8877 7.98425L11.998 10.8749L9.1084 7.98425C8.7185 7.59439 8.08825 7.59457 7.69824 7.98425C7.30825 8.37424 7.30828 9.00441 7.69824 9.39441L10.5879 12.285L7.69824 15.1747C7.30824 15.5647 7.30824 16.1948 7.69824 16.5848C8.08826 16.9747 8.71846 16.9748 9.1084 16.5848L11.998 13.6942L14.8877 16.5848C15.2776 16.9748 15.9078 16.9747 16.2979 16.5848C16.6779 16.1948 16.6779 15.5547 16.2979 15.1747L13.4082 12.285L16.2979 9.39441C16.6878 9.00441 16.6878 8.37424 16.2979 7.98425Z' fill='%23D32821'/%3E%3C/svg%3E")`,
+    unattempted: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M11.998 2.28503C17.518 2.28503 21.998 6.76503 21.998 12.285C21.9979 17.8049 17.5179 22.285 11.998 22.285C6.47817 22.285 1.99824 17.8049 1.99805 12.285C1.99805 6.76503 6.47805 2.28503 11.998 2.28503ZM11.998 4.28503C7.57805 4.28503 3.99805 7.86503 3.99805 12.285C3.99824 16.7049 7.57817 20.285 11.998 20.285C16.4179 20.285 19.9979 16.7049 19.998 12.285C19.998 7.86503 16.418 4.28503 11.998 4.28503Z' fill='%23707070' fill-opacity='.6'/%3E%3C/svg%3E")`,
+  }[$state] ?? 'none')};
+  background-repeat: no-repeat;
+  background-size: contain;
+`;
+
+interface AttemptTagProps {
+  $filled: boolean;
+}
+
+const AttemptTag = styled.span<AttemptTagProps>`
+  display: inline-flex;
+  min-height: ${magma.spaceScale.spacing06};
+  align-items: center;
+  padding: 0 ${magma.spaceScale.spacing03};
+  border: ${({ $filled }) => ($filled ? '0' : `1px solid ${magma.colors.neutral400}`)};
+  border-radius: 9999px;
+  background: ${({ $filled }) => ($filled ? magma.colors.neutral300 : 'transparent')};
+  color: ${magma.colors.neutral700};
+  font-size: ${magma.typeScale.size01.fontSize};
+  font-weight: 500;
+`;
+
+const AttemptPoints = styled(Paragraph)`
+  && {
+    margin: 0;
+    height: 100%;
+    box-sizing: border-box;
+    align-items: center;
+    justify-content: flex-end;
+    color: ${magma.colors.neutral700};
+    font-size: ${magma.typeScale.size02.fontSize};
+    text-align: right;
+  }
+`;
+
+const AttemptLabel = styled(Paragraph)`
+  && {
+    margin: 0;
+    color: ${magma.colors.neutral700};
+    font-size: ${magma.typeScale.size02.fontSize};
+    font-weight: 600;
+  }
+`;
+
+const AttemptStatus = styled(Paragraph)`
+  margin: 0;
+  color: ${magma.colors.neutral600};
 `;
 
 const QuestionToolbar = styled.aside`
